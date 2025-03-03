@@ -1,4 +1,4 @@
-# Group Project 2 Setup Instructions
+# Setup Instructions
 
 ## Prerequisites
 - Ensure the `mysql.jar` file is added to `/data-integration/lib/`.
