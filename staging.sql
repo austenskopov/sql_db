@@ -1,5 +1,10 @@
+-- =============================================================
+-- SQL SCRIPT: Company Data Migration & Transformation
+-- =============================================================
 
--- Step 1: Create the main table to store raw company data
+-- =============================================================
+-- 1) Create the "company_raw" table (BEFORE Pentaho migration)
+-- =============================================================
 CREATE TABLE company_raw (
     linkedin_internal_id VARCHAR(255),
     description TEXT,
@@ -30,7 +35,9 @@ CREATE TABLE company_raw (
     customer_list TEXT
 );
 
--- Step 2: Clean up the company_raw table by removing unnecessary columns
+-- =============================================================
+-- 2) Drop unneeded columns from "company_raw"
+-- =============================================================
 ALTER TABLE company_raw
   DROP COLUMN exit_data,
   DROP COLUMN acquisitions,
@@ -39,17 +46,20 @@ ALTER TABLE company_raw
   DROP COLUMN categories,
   DROP COLUMN customer_list;
 
--- Step 3: Add a primary key to the company_raw table
+-- =============================================================
+-- 3) Add an auto-increment primary key to "company_raw"
+-- =============================================================
 ALTER TABLE company_raw
   ADD COLUMN company_id INT AUTO_INCREMENT PRIMARY KEY FIRST;
 
--- Step 4: Create the specialty table to store unique specialties
+-- =============================================================
+-- 4) Create "specialty" dimension and "company_specialty" junction
+-- =============================================================
 CREATE TABLE IF NOT EXISTS specialty (
     specialty_name_id INT AUTO_INCREMENT PRIMARY KEY,
     specialty_name VARCHAR(255) NOT NULL
 ) ENGINE=INNODB;
 
--- Step 5: Create a junction table to link companies with their specialties
 CREATE TABLE IF NOT EXISTS company_specialty (
     unique_id INT AUTO_INCREMENT PRIMARY KEY,
     company_id INT NOT NULL,
@@ -59,13 +69,14 @@ CREATE TABLE IF NOT EXISTS company_specialty (
     UNIQUE (company_id, specialty_name_id)
 ) ENGINE=INNODB;
 
--- Step 6: Create the type table to store unique company types
+-- =============================================================
+-- 5) Create "type" dimension and "company_type" junction
+-- =============================================================
 CREATE TABLE IF NOT EXISTS type (
     company_type_id INT AUTO_INCREMENT PRIMARY KEY,
     company_type_name VARCHAR(255) NOT NULL
 ) ENGINE=INNODB;
 
--- Step 7: Create a junction table to link companies with their types
 CREATE TABLE IF NOT EXISTS company_type (
     unique_id INT AUTO_INCREMENT PRIMARY KEY,
     company_id INT NOT NULL,
@@ -75,13 +86,14 @@ CREATE TABLE IF NOT EXISTS company_type (
     UNIQUE (company_id, company_type_id)
 ) ENGINE=INNODB;
 
--- Step 8: Create the industry table to store unique industries
+-- =============================================================
+-- 6) Create "industry" dimension and "industry_type" junction
+-- =============================================================
 CREATE TABLE IF NOT EXISTS industry (
     industry_id INT AUTO_INCREMENT PRIMARY KEY,
     industry_name VARCHAR(255) NOT NULL
 ) ENGINE=INNODB;
 
--- Step 9: Create a junction table to link companies with their industries
 CREATE TABLE IF NOT EXISTS industry_type (
     unique_id INT AUTO_INCREMENT PRIMARY KEY,
     company_id INT NOT NULL,
@@ -91,7 +103,26 @@ CREATE TABLE IF NOT EXISTS industry_type (
     UNIQUE (company_id, industry_id)
 ) ENGINE=INNODB;
 
--- Step 10: Create the locations table to store unique locations
+-- =============================================================
+-- 7) Create "ranges" dimension and "company_range" junction
+-- =============================================================
+CREATE TABLE IF NOT EXISTS ranges (
+    range_id INT AUTO_INCREMENT PRIMARY KEY,
+    range_parameter VARCHAR(255) NOT NULL
+) ENGINE=INNODB;
+
+CREATE TABLE IF NOT EXISTS company_range (
+    unique_id INT AUTO_INCREMENT PRIMARY KEY,
+    range_id INT NOT NULL,
+    company_id INT NOT NULL,
+    FOREIGN KEY (company_id) REFERENCES company_raw(company_id),
+    FOREIGN KEY (range_id) REFERENCES ranges(range_id),
+    UNIQUE (company_id, range_id)
+) ENGINE=INNODB;
+
+-- =============================================================
+-- 8) Create "locations" dimension and "company_location" junction
+-- =============================================================
 CREATE TABLE IF NOT EXISTS locations (
     locations_id INT AUTO_INCREMENT PRIMARY KEY,
     country VARCHAR(255),
@@ -102,7 +133,6 @@ CREATE TABLE IF NOT EXISTS locations (
     state VARCHAR(255)
 ) ENGINE=INNODB;
 
--- Step 11: Create a junction table to link companies with their locations
 CREATE TABLE IF NOT EXISTS company_location (
     unique_id INT AUTO_INCREMENT PRIMARY KEY,
     company_id INT NOT NULL,
@@ -112,7 +142,9 @@ CREATE TABLE IF NOT EXISTS company_location (
     UNIQUE (company_id, locations_id)
 ) ENGINE=INNODB;
 
--- Step 12: Create the company_updates table to store updates related to companies
+-- =============================================================
+-- 9) Create tables for updates and related companies
+-- =============================================================
 CREATE TABLE IF NOT EXISTS company_updates (
     update_id INT AUTO_INCREMENT PRIMARY KEY,
     company_id INT NOT NULL,
@@ -125,7 +157,6 @@ CREATE TABLE IF NOT EXISTS company_updates (
     UNIQUE (update_id, company_id)
 ) ENGINE=INNODB;
 
--- Step 13: Create the affiliated_companies table to store affiliated companies
 CREATE TABLE IF NOT EXISTS affiliated_companies (
     affiliated_companies_id INT AUTO_INCREMENT PRIMARY KEY,
     company_id INT NOT NULL,
@@ -137,7 +168,6 @@ CREATE TABLE IF NOT EXISTS affiliated_companies (
     UNIQUE (affiliated_companies_id, company_id)
 ) ENGINE=INNODB;
 
--- Step 14: Create the similar_companies table to store similar companies
 CREATE TABLE IF NOT EXISTS similar_companies (
     similar_companies_id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(500) NOT NULL, 
@@ -146,7 +176,6 @@ CREATE TABLE IF NOT EXISTS similar_companies (
     location VARCHAR(500) NOT NULL
 ) ENGINE=INNODB;
 
--- Step 15: Create a junction table to link companies with their similar companies
 CREATE TABLE IF NOT EXISTS similar_companies_junction (
     unique_id INT AUTO_INCREMENT PRIMARY KEY,
     similar_companies_id INT NOT NULL,
@@ -156,7 +185,11 @@ CREATE TABLE IF NOT EXISTS similar_companies_junction (
     UNIQUE (company_id, similar_companies_id)
 ) ENGINE=INNODB;
 
--- Step 16: Insert distinct specialties into the specialty table
+-- =============================================================
+-- 10) Insert Data into Newly Created Tables
+-- =============================================================
+
+-- 10.1) Specialties
 INSERT INTO specialty (specialty_name)
 SELECT DISTINCT TRIM(jt.specialty)
 FROM company_raw cr
@@ -171,7 +204,6 @@ WHERE cr.specialities IS NOT NULL
   AND TRIM(jt.specialty) <> ''
 ON DUPLICATE KEY UPDATE specialty_name = specialty_name;
 
--- Step 17: Insert data into the company_specialty junction table
 INSERT INTO company_specialty (company_id, specialty_name_id)
 SELECT cr.company_id, s.specialty_name_id
 FROM company_raw cr
@@ -187,7 +219,7 @@ WHERE cr.specialities IS NOT NULL
   AND TRIM(jt.specialty) <> ''
 ON DUPLICATE KEY UPDATE specialty_name_id = s.specialty_name_id;
 
--- Step 18: Insert distinct company types into the type table
+-- 10.2) Company Type
 INSERT INTO type (company_type_name)
 SELECT DISTINCT TRIM(company_type) AS company_type_name
 FROM company_raw
@@ -195,7 +227,6 @@ WHERE company_type IS NOT NULL
   AND TRIM(company_type) <> ''
 ON DUPLICATE KEY UPDATE company_type_name = company_type_name;
 
--- Step 19: Insert data into the company_type junction table
 INSERT INTO company_type (company_id, company_type_id)
 SELECT cr.company_id, t.company_type_id
 FROM company_raw cr
@@ -204,7 +235,7 @@ WHERE cr.company_type IS NOT NULL
   AND TRIM(cr.company_type) <> ''
 ON DUPLICATE KEY UPDATE company_type_id = t.company_type_id;
 
--- Step 20: Insert distinct industries into the industry table
+-- 10.3) Industry
 INSERT INTO industry (industry_name)
 SELECT DISTINCT TRIM(industry) AS industry_name
 FROM company_raw
@@ -212,7 +243,6 @@ WHERE industry IS NOT NULL
   AND TRIM(industry) <> ''
 ON DUPLICATE KEY UPDATE industry_name = industry_name;
 
--- Step 21: Insert data into the industry_type junction table
 INSERT INTO industry_type (company_id, industry_id)
 SELECT cr.company_id, i.industry_id
 FROM company_raw cr
@@ -221,7 +251,85 @@ WHERE cr.industry IS NOT NULL
   AND TRIM(cr.industry) <> ''
 ON DUPLICATE KEY UPDATE industry_id = i.industry_id;
 
--- Step 22: Insert distinct locations into the locations table
+-- 10.4) Ranges (Company Size)
+INSERT INTO ranges (range_parameter)
+SELECT DISTINCT
+   CASE 
+      WHEN jt.low = 0    AND jt.high = 1     THEN '0-1'
+      WHEN jt.low = 2    AND jt.high = 10    THEN '2-10'
+      WHEN jt.low = 11   AND jt.high = 50    THEN '11-50'
+      WHEN jt.low = 51   AND jt.high = 200   THEN '51-200'
+      WHEN jt.low = 201  AND jt.high = 500   THEN '201-500'
+      WHEN jt.low = 501  AND jt.high = 1000  THEN '501-1000'
+      WHEN jt.low = 1001 AND jt.high = 5000  THEN '1001-5000'
+      WHEN jt.low = 5001 AND jt.high = 10000 THEN '5001-10000'
+      WHEN jt.low = 10001 AND jt.high IS NULL THEN '10001+'
+      ELSE NULL
+   END AS range_parameter
+FROM company_raw cr
+JOIN JSON_TABLE(
+    cr.company_size,
+    '$'
+    COLUMNS (
+       low  INT PATH '$[0]',
+       high INT PATH '$[1]'
+    )
+) AS jt
+WHERE cr.company_size IS NOT NULL
+  AND jt.low IS NOT NULL
+  AND (
+       (jt.low = 0    AND jt.high = 1) OR
+       (jt.low = 2    AND jt.high = 10) OR
+       (jt.low = 11   AND jt.high = 50) OR
+       (jt.low = 51   AND jt.high = 200) OR
+       (jt.low = 201  AND jt.high = 500) OR
+       (jt.low = 501  AND jt.high = 1000) OR
+       (jt.low = 1001 AND jt.high = 5000) OR
+       (jt.low = 5001 AND jt.high = 10000) OR
+       (jt.low = 10001 AND jt.high IS NULL)
+  );
+
+INSERT INTO company_range (company_id, range_id)
+SELECT DISTINCT
+    cr.company_id,
+    r.range_id
+FROM company_raw cr
+JOIN JSON_TABLE(
+    cr.company_size,
+    '$'
+    COLUMNS (
+       low  INT PATH '$[0]',
+       high INT PATH '$[1]'
+    )
+) AS jt
+JOIN ranges r 
+   ON r.range_parameter = CASE 
+         WHEN jt.low = 0    AND jt.high = 1     THEN '0-1'
+         WHEN jt.low = 2    AND jt.high = 10    THEN '2-10'
+         WHEN jt.low = 11   AND jt.high = 50    THEN '11-50'
+         WHEN jt.low = 51   AND jt.high = 200   THEN '51-200'
+         WHEN jt.low = 201  AND jt.high = 500   THEN '201-500'
+         WHEN jt.low = 501  AND jt.high = 1000  THEN '501-1000'
+         WHEN jt.low = 1001 AND jt.high = 5000  THEN '1001-5000'
+         WHEN jt.low = 5001 AND jt.high = 10000 THEN '5001-10000'
+         WHEN jt.low = 10001 AND jt.high IS NULL THEN '10001+'
+         ELSE NULL
+      END
+WHERE cr.company_size IS NOT NULL
+  AND jt.low IS NOT NULL
+  AND (
+       (jt.low = 0    AND jt.high = 1) OR
+       (jt.low = 2    AND jt.high = 10) OR
+       (jt.low = 11   AND jt.high = 50) OR
+       (jt.low = 51   AND jt.high = 200) OR
+       (jt.low = 201  AND jt.high = 500) OR
+       (jt.low = 501  AND jt.high = 1000) OR
+       (jt.low = 1001 AND jt.high = 5000) OR
+       (jt.low = 5001 AND jt.high = 10000) OR
+       (jt.low = 10001 AND jt.high IS NULL)
+  );
+
+-- 10.5) Locations
 INSERT INTO locations (country, city, postal_code, address_line1, is_hq, state)
 SELECT DISTINCT
     TRIM(jt.country) AS country,
@@ -247,9 +355,8 @@ JOIN JSON_TABLE(
     )
 ) AS jt
 WHERE cr.locations IS NOT NULL
-  AND TRIM(jt.country) <> '';  
+  AND TRIM(jt.country) <> '';
 
--- Step 23: Insert data into the company_location junction table
 INSERT INTO company_location (company_id, locations_id)
 SELECT DISTINCT
     cr.company_id, 
@@ -280,7 +387,7 @@ JOIN locations l
 WHERE cr.locations IS NOT NULL
   AND TRIM(jt.country) <> '';
 
--- Step 24: Insert updates into the company_updates table
+-- 10.6) Company Updates
 INSERT INTO company_updates (company_id, article_link, image, posted_on, update_text, total_likes)
 SELECT 
     cr.company_id,
@@ -311,7 +418,7 @@ JOIN JSON_TABLE(
 ) AS jt
 WHERE cr.updates IS NOT NULL;
 
--- Step 25: Insert affiliated companies into the affiliated_companies table
+-- 10.7) Affiliated Companies
 INSERT INTO affiliated_companies (company_id, name, linkedin_url, industry, location)
 SELECT 
     cr.company_id,
@@ -332,7 +439,7 @@ JOIN JSON_TABLE(
 ) AS jt
 WHERE cr.affiliated_companies IS NOT NULL;
 
--- Step 26: Insert similar companies into the similar_companies table
+-- 10.8) Similar Companies
 INSERT INTO similar_companies (name, linkedin_url, industry, location)
 SELECT DISTINCT
     COALESCE(TRIM(jt.name), 'No Name Provided') AS name,
@@ -353,7 +460,6 @@ JOIN JSON_TABLE(
 WHERE cr.similar_companies IS NOT NULL
   AND TRIM(jt.name) <> '';
 
--- Step 27: Insert data into the similar_companies_junction table
 INSERT INTO similar_companies_junction (company_id, similar_companies_id)
 SELECT DISTINCT
     cr.company_id,
@@ -369,15 +475,17 @@ JOIN JSON_TABLE(
        location VARCHAR(500) PATH '$.location'
     )
 ) AS jt
-JOIN similar_companies sc ON 
-    sc.name = COALESCE(TRIM(jt.name), 'No Name Provided')
-    AND sc.linkedin_url = COALESCE(TRIM(jt.link), 'No Link Provided')
-    AND sc.industry = COALESCE(TRIM(jt.industry), 'No Industry Provided')
-    AND sc.location = COALESCE(TRIM(jt.location), 'No Location Provided')
+JOIN similar_companies sc 
+    ON sc.name         = COALESCE(TRIM(jt.name), 'No Name Provided')
+   AND sc.linkedin_url = COALESCE(TRIM(jt.link), 'No Link Provided')
+   AND sc.industry     = COALESCE(TRIM(jt.industry), 'No Industry Provided')
+   AND sc.location     = COALESCE(TRIM(jt.location), 'No Location Provided')
 WHERE cr.similar_companies IS NOT NULL
   AND TRIM(jt.name) <> '';
 
--- Step 28: Final cleanup by dropping columns that are no longer needed
+-- =============================================================
+-- 11) Clean Up: Drop Columns We No Longer Need
+-- =============================================================
 ALTER TABLE company_raw DROP COLUMN industry;
 ALTER TABLE company_raw DROP COLUMN hq;
 ALTER TABLE company_raw DROP COLUMN company_type;
@@ -386,5 +494,10 @@ ALTER TABLE company_raw DROP COLUMN locations;
 ALTER TABLE company_raw DROP COLUMN similar_companies;
 ALTER TABLE company_raw DROP COLUMN affiliated_companies;
 ALTER TABLE company_raw DROP COLUMN updates;
+
 ALTER TABLE affiliated_companies DROP COLUMN location;
 ALTER TABLE similar_companies DROP COLUMN location;
+
+-- =============================================================
+-- END OF SCRIPT
+-- =============================================================

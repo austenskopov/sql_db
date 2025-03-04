@@ -1,46 +1,41 @@
-# Ensure the target database and the company_raw table with original columns are present before execution.
-# load PASSWORD into .env
+"""
+Automate SQL queries on the "gp_02" MySQL database.
 
+Instructions:
+1. Ensure you have a .env file with the variable `PASSWROD` set to your MySQL password.
+2. Install any dependencies (e.g. `pip install python-dotenv mysql-connector-python`) if necessary.
+3. Run this Python script. It will connect to localhost with user "root" and database "gp_02",
+   then execute the SQL queries in sequence.
+4. Note: The `CREATE TABLE company_raw` is intentionally omitted (already assumed to exist).
+"""
 
-import mysql.connector
-from mysql.connector import MySQLConnection
-from dotenv import load_dotenv
 import os
+import mysql.connector
+from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
-
-
-def create_mysql_connection(
-    host: str, user: str, password: str, database: str
-) -> MySQLConnection:
-    """
-    Establishes a connection to a MySQL database.
-    """
-    try:
-        connection = mysql.connector.connect(
-            host=host, user=user, password=password, database=database
-        )
-        if connection.is_connected():
-            print("Connection to MySQL database was successful.")
-        return connection
-    except mysql.connector.Error as err:
-        print(f"Error: {err}")
-        return None
+# If using a .env file, uncomment the next line after installing python-dotenv:
+# from dotenv import load_dotenv
 
 
-def setup_and_transform_data(connection: MySQLConnection):
-    """
-    Runs all the SQL statements that mimic your original SQL script:
-    1. Cleans up tables,
-    2. Creates new tables and relationships,
-    3. Inserts data from JSON columns into new tables,
-    4. Drops old columns.
-    """
+def run_migration():
+    # Uncomment if you use python-dotenv to load environment variables from .env
+    load_dotenv()
 
-    # List all your SQL steps in order:
-    sql_statements = [
-        # Step 2: Clean up the company_raw table by removing unnecessary columns
+    # Read the password from an environment variable named PASSWROD
+    db_password = os.getenv("PASSWROD")
+
+    # Connect to MySQL
+    connection = mysql.connector.connect(
+        host="localhost", user="root", password=db_password, database="gp_02"
+    )
+    cursor = connection.cursor()
+
+    # List of SQL statements in the exact order to be run
+    # (Removing the original "CREATE TABLE company_raw" portion as requested.)
+    queries = [
+        # ---------------------------------------------------------
+        # 1) Drop unneeded columns from "company_raw"
+        # ---------------------------------------------------------
         """
         ALTER TABLE company_raw
           DROP COLUMN exit_data,
@@ -50,19 +45,22 @@ def setup_and_transform_data(connection: MySQLConnection):
           DROP COLUMN categories,
           DROP COLUMN customer_list;
         """,
-        # Step 3: Add a primary key to the company_raw table
+        # ---------------------------------------------------------
+        # 2) Add an auto-increment primary key to "company_raw"
+        # ---------------------------------------------------------
         """
         ALTER TABLE company_raw
           ADD COLUMN company_id INT AUTO_INCREMENT PRIMARY KEY FIRST;
         """,
-        # Step 4: Create the specialty table
+        # ---------------------------------------------------------
+        # 3) Create "specialty" dimension and "company_specialty" junction
+        # ---------------------------------------------------------
         """
         CREATE TABLE IF NOT EXISTS specialty (
             specialty_name_id INT AUTO_INCREMENT PRIMARY KEY,
             specialty_name VARCHAR(255) NOT NULL
         ) ENGINE=INNODB;
         """,
-        # Step 5: Create the company_specialty junction table
         """
         CREATE TABLE IF NOT EXISTS company_specialty (
             unique_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -73,14 +71,15 @@ def setup_and_transform_data(connection: MySQLConnection):
             UNIQUE (company_id, specialty_name_id)
         ) ENGINE=INNODB;
         """,
-        # Step 6: Create the type table
+        # ---------------------------------------------------------
+        # 4) Create "type" dimension and "company_type" junction
+        # ---------------------------------------------------------
         """
         CREATE TABLE IF NOT EXISTS type (
             company_type_id INT AUTO_INCREMENT PRIMARY KEY,
             company_type_name VARCHAR(255) NOT NULL
         ) ENGINE=INNODB;
         """,
-        # Step 7: Create the company_type junction table
         """
         CREATE TABLE IF NOT EXISTS company_type (
             unique_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -91,14 +90,15 @@ def setup_and_transform_data(connection: MySQLConnection):
             UNIQUE (company_id, company_type_id)
         ) ENGINE=INNODB;
         """,
-        # Step 8: Create the industry table
+        # ---------------------------------------------------------
+        # 5) Create "industry" dimension and "industry_type" junction
+        # ---------------------------------------------------------
         """
         CREATE TABLE IF NOT EXISTS industry (
             industry_id INT AUTO_INCREMENT PRIMARY KEY,
             industry_name VARCHAR(255) NOT NULL
         ) ENGINE=INNODB;
         """,
-        # Step 9: Create the industry_type junction table
         """
         CREATE TABLE IF NOT EXISTS industry_type (
             unique_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -109,7 +109,28 @@ def setup_and_transform_data(connection: MySQLConnection):
             UNIQUE (company_id, industry_id)
         ) ENGINE=INNODB;
         """,
-        # Step 10: Create the locations table
+        # ---------------------------------------------------------
+        # 6) Create "ranges" dimension and "company_range" junction
+        # ---------------------------------------------------------
+        """
+        CREATE TABLE IF NOT EXISTS ranges (
+            range_id INT AUTO_INCREMENT PRIMARY KEY,
+            range_parameter VARCHAR(255) NOT NULL
+        ) ENGINE=INNODB;
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS company_range (
+            unique_id INT AUTO_INCREMENT PRIMARY KEY,
+            range_id INT NOT NULL,
+            company_id INT NOT NULL,
+            FOREIGN KEY (company_id) REFERENCES company_raw(company_id),
+            FOREIGN KEY (range_id) REFERENCES ranges(range_id),
+            UNIQUE (company_id, range_id)
+        ) ENGINE=INNODB;
+        """,
+        # ---------------------------------------------------------
+        # 7) Create "locations" dimension and "company_location" junction
+        # ---------------------------------------------------------
         """
         CREATE TABLE IF NOT EXISTS locations (
             locations_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -121,7 +142,6 @@ def setup_and_transform_data(connection: MySQLConnection):
             state VARCHAR(255)
         ) ENGINE=INNODB;
         """,
-        # Step 11: Create the company_location junction table
         """
         CREATE TABLE IF NOT EXISTS company_location (
             unique_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -132,7 +152,9 @@ def setup_and_transform_data(connection: MySQLConnection):
             UNIQUE (company_id, locations_id)
         ) ENGINE=INNODB;
         """,
-        # Step 12: Create the company_updates table
+        # ---------------------------------------------------------
+        # 8) Create tables for updates / affiliated / similar companies
+        # ---------------------------------------------------------
         """
         CREATE TABLE IF NOT EXISTS company_updates (
             update_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -146,7 +168,6 @@ def setup_and_transform_data(connection: MySQLConnection):
             UNIQUE (update_id, company_id)
         ) ENGINE=INNODB;
         """,
-        # Step 13: Create the affiliated_companies table
         """
         CREATE TABLE IF NOT EXISTS affiliated_companies (
             affiliated_companies_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -159,7 +180,6 @@ def setup_and_transform_data(connection: MySQLConnection):
             UNIQUE (affiliated_companies_id, company_id)
         ) ENGINE=INNODB;
         """,
-        # Step 14: Create the similar_companies table
         """
         CREATE TABLE IF NOT EXISTS similar_companies (
             similar_companies_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -169,7 +189,6 @@ def setup_and_transform_data(connection: MySQLConnection):
             location VARCHAR(500) NOT NULL
         ) ENGINE=INNODB;
         """,
-        # Step 15: Create the similar_companies_junction table
         """
         CREATE TABLE IF NOT EXISTS similar_companies_junction (
             unique_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -180,7 +199,10 @@ def setup_and_transform_data(connection: MySQLConnection):
             UNIQUE (company_id, similar_companies_id)
         ) ENGINE=INNODB;
         """,
-        # Step 16: Insert distinct specialties into the specialty table
+        # ---------------------------------------------------------
+        # 9) Insert Data from "company_raw" into Dimension/Junction tables
+        # ---------------------------------------------------------
+        # 9.1) Specialties
         """
         INSERT INTO specialty (specialty_name)
         SELECT DISTINCT TRIM(jt.specialty)
@@ -196,7 +218,6 @@ def setup_and_transform_data(connection: MySQLConnection):
           AND TRIM(jt.specialty) <> ''
         ON DUPLICATE KEY UPDATE specialty_name = specialty_name;
         """,
-        # Step 17: Insert data into the company_specialty junction table
         """
         INSERT INTO company_specialty (company_id, specialty_name_id)
         SELECT cr.company_id, s.specialty_name_id
@@ -213,7 +234,7 @@ def setup_and_transform_data(connection: MySQLConnection):
           AND TRIM(jt.specialty) <> ''
         ON DUPLICATE KEY UPDATE specialty_name_id = s.specialty_name_id;
         """,
-        # Step 18: Insert distinct company types into the type table
+        # 9.2) Company Type
         """
         INSERT INTO type (company_type_name)
         SELECT DISTINCT TRIM(company_type) AS company_type_name
@@ -222,7 +243,6 @@ def setup_and_transform_data(connection: MySQLConnection):
           AND TRIM(company_type) <> ''
         ON DUPLICATE KEY UPDATE company_type_name = company_type_name;
         """,
-        # Step 19: Insert data into the company_type junction table
         """
         INSERT INTO company_type (company_id, company_type_id)
         SELECT cr.company_id, t.company_type_id
@@ -232,7 +252,7 @@ def setup_and_transform_data(connection: MySQLConnection):
           AND TRIM(cr.company_type) <> ''
         ON DUPLICATE KEY UPDATE company_type_id = t.company_type_id;
         """,
-        # Step 20: Insert distinct industries into the industry table
+        # 9.3) Industry
         """
         INSERT INTO industry (industry_name)
         SELECT DISTINCT TRIM(industry) AS industry_name
@@ -241,7 +261,6 @@ def setup_and_transform_data(connection: MySQLConnection):
           AND TRIM(industry) <> ''
         ON DUPLICATE KEY UPDATE industry_name = industry_name;
         """,
-        # Step 21: Insert data into the industry_type junction table
         """
         INSERT INTO industry_type (company_id, industry_id)
         SELECT cr.company_id, i.industry_id
@@ -251,7 +270,87 @@ def setup_and_transform_data(connection: MySQLConnection):
           AND TRIM(cr.industry) <> ''
         ON DUPLICATE KEY UPDATE industry_id = i.industry_id;
         """,
-        # Step 22: Insert distinct locations into the locations table
+        # 9.4) Ranges (Company Size)
+        """
+        INSERT INTO ranges (range_parameter)
+        SELECT DISTINCT
+           CASE 
+              WHEN jt.low = 0    AND jt.high = 1     THEN '0-1'
+              WHEN jt.low = 2    AND jt.high = 10    THEN '2-10'
+              WHEN jt.low = 11   AND jt.high = 50    THEN '11-50'
+              WHEN jt.low = 51   AND jt.high = 200   THEN '51-200'
+              WHEN jt.low = 201  AND jt.high = 500   THEN '201-500'
+              WHEN jt.low = 501  AND jt.high = 1000  THEN '501-1000'
+              WHEN jt.low = 1001 AND jt.high = 5000  THEN '1001-5000'
+              WHEN jt.low = 5001 AND jt.high = 10000 THEN '5001-10000'
+              WHEN jt.low = 10001 AND jt.high IS NULL THEN '10001+'
+              ELSE NULL
+           END AS range_parameter
+        FROM company_raw cr
+        JOIN JSON_TABLE(
+            cr.company_size,
+            '$'
+            COLUMNS (
+               low  INT PATH '$[0]',
+               high INT PATH '$[1]'
+            )
+        ) AS jt
+        WHERE cr.company_size IS NOT NULL
+          AND jt.low IS NOT NULL
+          AND (
+               (jt.low = 0    AND jt.high = 1)
+            OR (jt.low = 2    AND jt.high = 10)
+            OR (jt.low = 11   AND jt.high = 50)
+            OR (jt.low = 51   AND jt.high = 200)
+            OR (jt.low = 201  AND jt.high = 500)
+            OR (jt.low = 501  AND jt.high = 1000)
+            OR (jt.low = 1001 AND jt.high = 5000)
+            OR (jt.low = 5001 AND jt.high = 10000)
+            OR (jt.low = 10001 AND jt.high IS NULL)
+          );
+        """,
+        """
+        INSERT INTO company_range (company_id, range_id)
+        SELECT DISTINCT
+            cr.company_id,
+            r.range_id
+        FROM company_raw cr
+        JOIN JSON_TABLE(
+            cr.company_size,
+            '$'
+            COLUMNS (
+               low  INT PATH '$[0]',
+               high INT PATH '$[1]'
+            )
+        ) AS jt
+        JOIN ranges r 
+           ON r.range_parameter = CASE 
+                 WHEN jt.low = 0    AND jt.high = 1     THEN '0-1'
+                 WHEN jt.low = 2    AND jt.high = 10    THEN '2-10'
+                 WHEN jt.low = 11   AND jt.high = 50    THEN '11-50'
+                 WHEN jt.low = 51   AND jt.high = 200   THEN '51-200'
+                 WHEN jt.low = 201  AND jt.high = 500   THEN '201-500'
+                 WHEN jt.low = 501  AND jt.high = 1000  THEN '501-1000'
+                 WHEN jt.low = 1001 AND jt.high = 5000  THEN '1001-5000'
+                 WHEN jt.low = 5001 AND jt.high = 10000 THEN '5001-10000'
+                 WHEN jt.low = 10001 AND jt.high IS NULL THEN '10001+'
+                 ELSE NULL
+              END
+        WHERE cr.company_size IS NOT NULL
+          AND jt.low IS NOT NULL
+          AND (
+               (jt.low = 0    AND jt.high = 1)
+            OR (jt.low = 2    AND jt.high = 10)
+            OR (jt.low = 11   AND jt.high = 50)
+            OR (jt.low = 51   AND jt.high = 200)
+            OR (jt.low = 201  AND jt.high = 500)
+            OR (jt.low = 501  AND jt.high = 1000)
+            OR (jt.low = 1001 AND jt.high = 5000)
+            OR (jt.low = 5001 AND jt.high = 10000)
+            OR (jt.low = 10001 AND jt.high IS NULL)
+          );
+        """,
+        # 9.5) Locations
         """
         INSERT INTO locations (country, city, postal_code, address_line1, is_hq, state)
         SELECT DISTINCT
@@ -280,7 +379,6 @@ def setup_and_transform_data(connection: MySQLConnection):
         WHERE cr.locations IS NOT NULL
           AND TRIM(jt.country) <> '';
         """,
-        # Step 23: Insert data into the company_location junction table
         """
         INSERT INTO company_location (company_id, locations_id)
         SELECT DISTINCT
@@ -312,7 +410,7 @@ def setup_and_transform_data(connection: MySQLConnection):
         WHERE cr.locations IS NOT NULL
           AND TRIM(jt.country) <> '';
         """,
-        # Step 24: Insert updates into the company_updates table
+        # 9.6) Company Updates
         """
         INSERT INTO company_updates (company_id, article_link, image, posted_on, update_text, total_likes)
         SELECT 
@@ -344,7 +442,7 @@ def setup_and_transform_data(connection: MySQLConnection):
         ) AS jt
         WHERE cr.updates IS NOT NULL;
         """,
-        # Step 25: Insert affiliated companies
+        # 9.7) Affiliated Companies
         """
         INSERT INTO affiliated_companies (company_id, name, linkedin_url, industry, location)
         SELECT 
@@ -366,7 +464,7 @@ def setup_and_transform_data(connection: MySQLConnection):
         ) AS jt
         WHERE cr.affiliated_companies IS NOT NULL;
         """,
-        # Step 26: Insert similar companies
+        # 9.8) Similar Companies
         """
         INSERT INTO similar_companies (name, linkedin_url, industry, location)
         SELECT DISTINCT
@@ -388,7 +486,6 @@ def setup_and_transform_data(connection: MySQLConnection):
         WHERE cr.similar_companies IS NOT NULL
           AND TRIM(jt.name) <> '';
         """,
-        # Step 27: Insert data into the similar_companies_junction table
         """
         INSERT INTO similar_companies_junction (company_id, similar_companies_id)
         SELECT DISTINCT
@@ -405,15 +502,17 @@ def setup_and_transform_data(connection: MySQLConnection):
                location VARCHAR(500) PATH '$.location'
             )
         ) AS jt
-        JOIN similar_companies sc ON 
-            sc.name = COALESCE(TRIM(jt.name), 'No Name Provided')
-            AND sc.linkedin_url = COALESCE(TRIM(jt.link), 'No Link Provided')
-            AND sc.industry = COALESCE(TRIM(jt.industry), 'No Industry Provided')
-            AND sc.location = COALESCE(TRIM(jt.location), 'No Location Provided')
+        JOIN similar_companies sc 
+            ON sc.name         = COALESCE(TRIM(jt.name), 'No Name Provided')
+           AND sc.linkedin_url = COALESCE(TRIM(jt.link), 'No Link Provided')
+           AND sc.industry     = COALESCE(TRIM(jt.industry), 'No Industry Provided')
+           AND sc.location     = COALESCE(TRIM(jt.location), 'No Location Provided')
         WHERE cr.similar_companies IS NOT NULL
           AND TRIM(jt.name) <> '';
         """,
-        # Step 28: Drop columns no longer needed
+        # ---------------------------------------------------------
+        # 10) Cleanup: drop columns that are no longer needed
+        # ---------------------------------------------------------
         """
         ALTER TABLE company_raw DROP COLUMN industry;
         """,
@@ -446,24 +545,16 @@ def setup_and_transform_data(connection: MySQLConnection):
         """,
     ]
 
-    cursor = connection.cursor()
-    for i, statement in enumerate(sql_statements, start=1):
-        try:
-            cursor.execute(statement)
-            connection.commit()
-            print(f"[OK] Step {i} executed successfully.")
-        except mysql.connector.Error as err:
-            print(f"[ERROR] Step {i} failed: {err}")
-            # Decide if you want to break or continue
-            # break
+    # Execute each query in sequence
+    for i, query in enumerate(queries, start=1):
+        print(f"Executing query #{i}...")
+        cursor.execute(query)
+        connection.commit()
 
     cursor.close()
+    connection.close()
+    print("All queries executed successfully!")
 
 
-# Example usage:
 if __name__ == "__main__":
-    password = os.getenv("PASSWORD")
-    connection = create_mysql_connection("localhost", "root", password, "gp_02")
-    if connection:
-        setup_and_transform_data(connection)
-        connection.close()
+    run_migration()
