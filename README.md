@@ -9,9 +9,10 @@ This repository contains an ETL (Extract, Transform, Load) pipeline for processi
 
 ## Key Features
 - **Data Modeling**  
-  - Conceptual, Logical, and Physical diagrams (Crow’s Foot notation, 3NF design).
+  - Conceptual, Logical, and Physical diagrams (Crow's Foot notation, 3NF design).
+  - Focus on proper normalization principles to achieve Third Normal Form (3NF).
 - **Staging**  
-  - Loads raw JSON data into a staging database (`staging`) using Pentaho or Python scripts.
+  - Loads raw JSON data into a staging database (`staging`) using Pentaho Data Integration.
 - **Transformation**  
   - Normalizes data into intermediate tables, correcting inconsistencies and handling duplicates.
 - **Loading**  
@@ -39,10 +40,12 @@ sql_db/
 1. **Extract**  
    - JSON files from the `company-profile` directory are identified and read.
 2. **Staging**  
-   - Using Pentaho or Python, data is inserted into `staging` tables in MySQL.
+   - Using Pentaho Data Integration (Spoon), data is inserted into `staging` tables in MySQL.
 3. **Transform**  
-   - **Option A:** Run the SQL statements in `staging.sql` for straightforward normalization (ideal if all rules are covered by SQL).  
-   - **Option B:** Execute the `normalization_script.py` if you require more advanced data cleaning or additional custom logic.
+   - **Primary Method:** Run the SQL statements in `staging.sql` for normalization:
+     - First execute the table creation section to establish the schema
+     - Then execute the remaining transformation queries in order
+   - **Optional:** Execute the `normalization_script.py` only if additional custom logic is required.
 4. **Load**  
    - Final normalized data is moved into the `company` database with enforced primary/foreign keys.
 
@@ -51,25 +54,20 @@ sql_db/
 ### Prerequisites
 - MySQL Server 5.7+  
 - Pentaho Data Integration 8.0+  
-- Python 3.6+ (with necessary libraries installed)  
+- Python 3.6+ (optional, only if using the Python script)  
 
 ### Quick Setup
-1. **Clone** this repository and open Pentaho Spoon (if using Pentaho).
-2. **Configure** database connections in Pentaho.
-3. **Run** the Pentaho job/transformation to load staging data:
-   ```bash
-   ./run-pentaho-job.sh stage-json-to-table.ktr
-   ```
-4. **Normalize** the data:
-   - **Option A:** Run the SQL script directly:
+1. **Clone** this repository.
+2. **Launch Pentaho** with the `./spoon` command.
+3. **Configure** database connections in Pentaho.
+4. **Run** the Pentaho transformation to load staging data.
+5. **Normalize** the data:
+   - Run the remaining SQL transformation querie after the first one:
      ```bash
-     mysql -u <user> -p <database> < staging.sql
+     mysql -u <user> -p <database> < staging_transformations.sql
      ```
-   - **Option B:** Use the Python script for custom transformations:
-     ```bash
-     python3 normalization_script.py
-     ```
-5. **Confirm** the final structure in the `company` database.
+   - Note: Python script is optional and only needed for specialized transformations.
+6. **Confirm** the final structure in the `company` database.
 
 ## Example Query
 ```sql
@@ -82,4 +80,4 @@ GROUP BY c.name;
 ```
 
 ## Additional Documentation
-See [instructions.md](instructions.md) for more details on the thought process
+See [instructions.md](instructions.md) for more details on the SQL normalization process and how the ERD was developed to achieve proper 3NF design.
