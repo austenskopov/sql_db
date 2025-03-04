@@ -1,44 +1,81 @@
-# LinkedIn Company Data ETL Processing System
+# LinkedIn Company Data ETL System
 
-## Overview
-This repository contains a complete ETL (Extract, Transform, Load) pipeline for processing LinkedIn company profile data. The system ingests JSON data files containing company information, loads them into a structured SQL database, and performs normalization to create an efficient relational schema.
+![Database](https://img.shields.io/badge/Database-MySQL-blue)
+![ETL](https://img.shields.io/badge/ETL-Pentaho-orange)
+![Python](https://img.shields.io/badge/Language-Python-green)
 
-## Repository Structure
+## 📋 Overview
+A comprehensive ETL (Extract, Transform, Load) pipeline for processing LinkedIn company profile data. This system converts raw JSON data into a normalized SQL database with proper relational schema design.
+
+## 🚀 Features
+- **Complex JSON Processing**: Handles nested structures, arrays, and objects
+- **Complete Normalization**: Creates efficient relational tables with proper constraints
+- **Automated Workflow**: End-to-end pipeline from extraction to final database
+- **Data Quality Handling**: Manages NULL values, duplicates, and inconsistencies
+- **Performance Optimized**: Designed for efficient querying and storage
+
+## 🛠️ Technology Stack
+- **Database**: MySQL
+- **ETL Tool**: Pentaho Data Integration (Spoon)
+- **Scripting**: Python 3.x
+- **Data Format**: JSON → Relational SQL
+
+## 📂 Repository Structure
 ```
-└── sql_db/
-    ├── README.md                        # This documentation file
-    ├── instructions.md                  # Detailed setup instructions
-    ├── normalization_script.py          # Python script for database normalization
-    ├── stage-json-to-table.ktr          # Pentaho Data Integration transformation file
-    ├── staging.sql                      # SQL schema and normalization queries
-    └── company-profile/                 # Source JSON data files
-        └── [multiple company JSON files]
+sql_db/
+├── README.md                       # This documentation
+├── instructions.md                 # Setup and execution instructions
+├── normalization_script.py         # Python data processing script
+├── stage-json-to-table.ktr         # Pentaho transformation definition
+├── staging.sql                     # SQL schema and normalization queries
+└── company-profile/                # Source JSON data files
+    └── [company_*.json]            # Multiple company profile files
 ```
 
-## Data Processing Flow
-1. **Extraction**: JSON company profile data is sourced from the `company-profile` directory
-2. **Loading**: The Pentaho Data Integration tool (`stage-json-to-table.ktr`) loads raw data into the `company_raw` table
-3. **Transformation**: Data is normalized through both SQL (`staging.sql`) and Python (`normalization_script.py`) processing
-4. **Result**: A fully normalized relational database with separate tables for companies, specialties, locations, industries, etc.
+## 📊 Data Processing Flow
+1. **Extract**: Source JSON files from `company-profile` directory
+2. **Load**: Pentaho loads raw data into `company_raw` staging table
+3. **Transform**: SQL and Python scripts normalize the data
+4. **Result**: Fully normalized database with tables for:
+   - Companies (core data)
+   - Specialties (many-to-many relationship)
+   - Locations (geographic data)
+   - Industries (categorization)
+   - And other related entities
 
-## Key Features
-- Processing of complex nested JSON structures including arrays and objects
-- Robust SQL schema design with appropriate foreign key relationships
-- Python automation for database transformation and enhancement
-- Handling of real-world data challenges (NULL values, duplicates, etc.)
-- Complete normalization through proper relational database design
+## ⚙️ Getting Started
 
-## Technologies Used
-- **MySQL**: Database engine
-- **Pentaho Data Integration (Spoon)**: ETL processing tool
-- **Python**: Scripting for advanced database operations
-- **SQL**: Schema creation and data transformation
+### Prerequisites
+- MySQL Server 5.7+
+- Pentaho Data Integration 8.0+
+- Python 3.6+ with required packages
+- Source JSON data files
 
-## Setup Instructions
-See the `instructions.md` file for detailed setup and execution steps. The process involves:
-1. Configuring the database connection in Pentaho
-2. Running the initial data load transformation
-3. Executing schema creation and normalization queries
-4. Running the Python script for additional data processing
+### Quick Setup
+1. Clone this repository
+2. Configure database connection in Pentaho
+3. Run initial data load:
+   ```
+   ./run-pentaho-job.sh stage-json-to-table.ktr
+   ```
+4. Execute SQL normalization:
+   ```
+   mysql -u username -p database < staging.sql
+   ```
+5. Run Python normalization:
+   ```
+   python3 normalization_script.py
+   ```
 
-This project demonstrates proficiency in SQL database design, ETL processes, data normalization techniques, and using multiple tools to create an efficient data pipeline.
+## 📝 Documentation
+See [instructions.md](instructions.md) for comprehensive setup and execution steps.
+
+## 🔍 Example Queries
+```sql
+-- Get companies with their specialties
+SELECT c.name, GROUP_CONCAT(s.specialty_name) AS specialties
+FROM companies c
+JOIN company_specialties cs ON c.id = cs.company_id
+JOIN specialties s ON cs.specialty_id = s.id
+GROUP BY c.name;
+```
