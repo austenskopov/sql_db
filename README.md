@@ -4,23 +4,23 @@
 ![ETL](https://img.shields.io/badge/ETL-Pentaho-orange)
 ![Python](https://img.shields.io/badge/Language-Python-green)
 
-## 📋 Overview
+## Overview
 A comprehensive ETL (Extract, Transform, Load) pipeline for processing LinkedIn company profile data. This system converts raw JSON data into a normalized SQL database with proper relational schema design.
 
-## 🚀 Features
+## Features
 - **Complex JSON Processing**: Handles nested structures, arrays, and objects
 - **Complete Normalization**: Creates efficient relational tables with proper constraints
 - **Automated Workflow**: End-to-end pipeline from extraction to final database
 - **Data Quality Handling**: Manages NULL values, duplicates, and inconsistencies
 - **Performance Optimized**: Designed for efficient querying and storage
 
-## 🛠️ Technology Stack
+##  Technology Stack
 - **Database**: MySQL
 - **ETL Tool**: Pentaho Data Integration (Spoon)
 - **Scripting**: Python 3.x
 - **Data Format**: JSON → Relational SQL
 
-## 📂 Repository Structure
+## Repository Structure
 ```
 sql_db/
 ├── README.md                       # This documentation
@@ -32,9 +32,9 @@ sql_db/
     └── [company_*.json]            # Multiple company profile files
 ```
 
-## 📊 Data Processing Flow
+## Data Processing Flow
 1. **Extract**: Source JSON files from `company-profile` directory
-2. **Load**: Pentaho loads raw data into `company_raw` staging table
+2. **Load**: Pentaho loads raw data into `company` staging table
 3. **Transform**: SQL and Python scripts normalize the data
 4. **Result**: Fully normalized database with tables for:
    - Companies (core data)
@@ -43,7 +43,7 @@ sql_db/
    - Industries (categorization)
    - And other related entities
 
-## ⚙️ Getting Started
+##  Getting Started
 
 ### Prerequisites
 - MySQL Server 5.7+
@@ -67,10 +67,10 @@ sql_db/
    python3 normalization_script.py
    ```
 
-## 📝 Documentation
+## Documentation
 See [instructions.md](instructions.md) for comprehensive setup and execution steps.
 
-## 🔍 Example Queries
+## Example Queries
 ```sql
 -- Get companies with their specialties
 SELECT c.name, GROUP_CONCAT(s.specialty_name) AS specialties
