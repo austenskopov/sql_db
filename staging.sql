@@ -3,9 +3,9 @@
 -- =============================================================
 
 -- =============================================================
--- 1) Create the "company_raw" table (BEFORE Pentaho migration)
+-- 1) Create the "company" table (BEFORE Pentaho migration)
 -- =============================================================
-CREATE TABLE company_raw (
+CREATE TABLE company (
     linkedin_internal_id VARCHAR(255),
     description TEXT,
     website VARCHAR(255),
@@ -36,9 +36,9 @@ CREATE TABLE company_raw (
 );
 
 -- =============================================================
--- 2) Drop unneeded columns from "company_raw"
+-- 2) Drop unneeded columns from "company"
 -- =============================================================
-ALTER TABLE company_raw
+ALTER TABLE company
   DROP COLUMN exit_data,
   DROP COLUMN acquisitions,
   DROP COLUMN extra,
@@ -47,9 +47,9 @@ ALTER TABLE company_raw
   DROP COLUMN customer_list;
 
 -- =============================================================
--- 3) Add an auto-increment primary key to "company_raw"
+-- 3) Add an auto-increment primary key to "company"
 -- =============================================================
-ALTER TABLE company_raw
+ALTER TABLE company
   ADD COLUMN company_id INT AUTO_INCREMENT PRIMARY KEY FIRST;
 
 -- =============================================================
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS company_specialty (
     unique_id INT AUTO_INCREMENT PRIMARY KEY,
     company_id INT NOT NULL,
     specialty_name_id INT NOT NULL,
-    FOREIGN KEY (company_id) REFERENCES company_raw(company_id),
+    FOREIGN KEY (company_id) REFERENCES company(company_id),
     FOREIGN KEY (specialty_name_id) REFERENCES specialty(specialty_name_id),
     UNIQUE (company_id, specialty_name_id)
 ) ENGINE=INNODB;
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS company_type (
     unique_id INT AUTO_INCREMENT PRIMARY KEY,
     company_id INT NOT NULL,
     company_type_id INT NOT NULL,
-    FOREIGN KEY (company_id) REFERENCES company_raw(company_id),
+    FOREIGN KEY (company_id) REFERENCES company(company_id),
     FOREIGN KEY (company_type_id) REFERENCES type(company_type_id),
     UNIQUE (company_id, company_type_id)
 ) ENGINE=INNODB;
@@ -98,7 +98,7 @@ CREATE TABLE IF NOT EXISTS industry_type (
     unique_id INT AUTO_INCREMENT PRIMARY KEY,
     company_id INT NOT NULL,
     industry_id INT NOT NULL,
-    FOREIGN KEY (company_id) REFERENCES company_raw(company_id),
+    FOREIGN KEY (company_id) REFERENCES company(company_id),
     FOREIGN KEY (industry_id) REFERENCES industry(industry_id),
     UNIQUE (company_id, industry_id)
 ) ENGINE=INNODB;
@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS company_range (
     unique_id INT AUTO_INCREMENT PRIMARY KEY,
     range_id INT NOT NULL,
     company_id INT NOT NULL,
-    FOREIGN KEY (company_id) REFERENCES company_raw(company_id),
+    FOREIGN KEY (company_id) REFERENCES company(company_id),
     FOREIGN KEY (range_id) REFERENCES ranges(range_id),
     UNIQUE (company_id, range_id)
 ) ENGINE=INNODB;
@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS company_location (
     unique_id INT AUTO_INCREMENT PRIMARY KEY,
     company_id INT NOT NULL,
     locations_id INT NOT NULL,
-    FOREIGN KEY (company_id) REFERENCES company_raw(company_id),
+    FOREIGN KEY (company_id) REFERENCES company(company_id),
     FOREIGN KEY (locations_id) REFERENCES locations(locations_id),
     UNIQUE (company_id, locations_id)
 ) ENGINE=INNODB;
@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS company_updates (
     posted_on DATE NOT NULL,
     update_text TEXT NOT NULL,
     total_likes INT NOT NULL,
-    FOREIGN KEY (company_id) REFERENCES company_raw(company_id),
+    FOREIGN KEY (company_id) REFERENCES company(company_id),
     UNIQUE (update_id, company_id)
 ) ENGINE=INNODB;
 
@@ -164,7 +164,7 @@ CREATE TABLE IF NOT EXISTS affiliated_companies (
     linkedin_url VARCHAR(500) NOT NULL,
     industry VARCHAR(500) NOT NULL,
     location VARCHAR(500) NOT NULL,
-    FOREIGN KEY (company_id) REFERENCES company_raw(company_id),
+    FOREIGN KEY (company_id) REFERENCES company(company_id),
     UNIQUE (affiliated_companies_id, company_id)
 ) ENGINE=INNODB;
 
@@ -180,7 +180,7 @@ CREATE TABLE IF NOT EXISTS similar_companies_junction (
     unique_id INT AUTO_INCREMENT PRIMARY KEY,
     similar_companies_id INT NOT NULL,
     company_id INT NOT NULL,
-    FOREIGN KEY (company_id) REFERENCES company_raw(company_id),
+    FOREIGN KEY (company_id) REFERENCES company(company_id),
     FOREIGN KEY (similar_companies_id) REFERENCES similar_companies(similar_companies_id),
     UNIQUE (company_id, similar_companies_id)
 ) ENGINE=INNODB;
@@ -192,7 +192,7 @@ CREATE TABLE IF NOT EXISTS similar_companies_junction (
 -- 10.1) Specialties
 INSERT INTO specialty (specialty_name)
 SELECT DISTINCT TRIM(jt.specialty)
-FROM company_raw cr
+FROM company cr
 JOIN JSON_TABLE(
     cr.specialities,
     '$[*]'
@@ -206,7 +206,7 @@ ON DUPLICATE KEY UPDATE specialty_name = specialty_name;
 
 INSERT INTO company_specialty (company_id, specialty_name_id)
 SELECT cr.company_id, s.specialty_name_id
-FROM company_raw cr
+FROM company cr
 JOIN JSON_TABLE(
     cr.specialities,
     '$[*]'
@@ -222,14 +222,14 @@ ON DUPLICATE KEY UPDATE specialty_name_id = s.specialty_name_id;
 -- 10.2) Company Type
 INSERT INTO type (company_type_name)
 SELECT DISTINCT TRIM(company_type) AS company_type_name
-FROM company_raw
+FROM company
 WHERE company_type IS NOT NULL
   AND TRIM(company_type) <> ''
 ON DUPLICATE KEY UPDATE company_type_name = company_type_name;
 
 INSERT INTO company_type (company_id, company_type_id)
 SELECT cr.company_id, t.company_type_id
-FROM company_raw cr
+FROM company cr
 JOIN type t ON t.company_type_name = TRIM(cr.company_type)
 WHERE cr.company_type IS NOT NULL
   AND TRIM(cr.company_type) <> ''
@@ -238,14 +238,14 @@ ON DUPLICATE KEY UPDATE company_type_id = t.company_type_id;
 -- 10.3) Industry
 INSERT INTO industry (industry_name)
 SELECT DISTINCT TRIM(industry) AS industry_name
-FROM company_raw
+FROM company
 WHERE industry IS NOT NULL
   AND TRIM(industry) <> ''
 ON DUPLICATE KEY UPDATE industry_name = industry_name;
 
 INSERT INTO industry_type (company_id, industry_id)
 SELECT cr.company_id, i.industry_id
-FROM company_raw cr
+FROM company cr
 JOIN industry i ON i.industry_name = TRIM(cr.industry)
 WHERE cr.industry IS NOT NULL
   AND TRIM(cr.industry) <> ''
@@ -266,7 +266,7 @@ SELECT DISTINCT
       WHEN jt.low = 10001 AND jt.high IS NULL THEN '10001+'
       ELSE NULL
    END AS range_parameter
-FROM company_raw cr
+FROM company cr
 JOIN JSON_TABLE(
     cr.company_size,
     '$'
@@ -293,7 +293,7 @@ INSERT INTO company_range (company_id, range_id)
 SELECT DISTINCT
     cr.company_id,
     r.range_id
-FROM company_raw cr
+FROM company cr
 JOIN JSON_TABLE(
     cr.company_size,
     '$'
@@ -341,7 +341,7 @@ SELECT DISTINCT
         ELSE FALSE 
     END AS is_hq,
     TRIM(jt.state) AS state
-FROM company_raw cr
+FROM company cr
 JOIN JSON_TABLE(
     cr.locations,
     '$[*]' 
@@ -361,7 +361,7 @@ INSERT INTO company_location (company_id, locations_id)
 SELECT DISTINCT
     cr.company_id, 
     l.locations_id
-FROM company_raw cr
+FROM company cr
 JOIN JSON_TABLE(
     cr.locations,
     '$[*]'
@@ -402,7 +402,7 @@ SELECT
     ) AS posted_on,
     COALESCE(jt.text, '') AS update_text,
     COALESCE(jt.total_likes, 0) AS total_likes
-FROM company_raw cr
+FROM company cr
 JOIN JSON_TABLE(
     cr.updates,
     '$[*]'
@@ -426,7 +426,7 @@ SELECT
     COALESCE(jt.link, 'No Link Provided') AS linkedin_url,
     COALESCE(jt.industry, 'No Industry Provided') AS industry,
     COALESCE(jt.location, 'No Location Provided') AS location
-FROM company_raw cr
+FROM company cr
 JOIN JSON_TABLE(
     cr.affiliated_companies,
     '$[*]'
@@ -446,7 +446,7 @@ SELECT DISTINCT
     COALESCE(TRIM(jt.link), 'No Link Provided') AS linkedin_url,
     COALESCE(TRIM(jt.industry), 'No Industry Provided') AS industry,
     COALESCE(TRIM(jt.location), 'No Location Provided') AS location
-FROM company_raw cr
+FROM company cr
 JOIN JSON_TABLE(
     cr.similar_companies,
     '$[*]'
@@ -464,7 +464,7 @@ INSERT INTO similar_companies_junction (company_id, similar_companies_id)
 SELECT DISTINCT
     cr.company_id,
     sc.similar_companies_id
-FROM company_raw cr
+FROM company cr
 JOIN JSON_TABLE(
     cr.similar_companies,
     '$[*]'
@@ -486,14 +486,14 @@ WHERE cr.similar_companies IS NOT NULL
 -- =============================================================
 -- 11) Clean Up: Drop Columns We No Longer Need
 -- =============================================================
-ALTER TABLE company_raw DROP COLUMN industry;
-ALTER TABLE company_raw DROP COLUMN hq;
-ALTER TABLE company_raw DROP COLUMN company_type;
-ALTER TABLE company_raw DROP COLUMN specialities;
-ALTER TABLE company_raw DROP COLUMN locations;
-ALTER TABLE company_raw DROP COLUMN similar_companies;
-ALTER TABLE company_raw DROP COLUMN affiliated_companies;
-ALTER TABLE company_raw DROP COLUMN updates;
+ALTER TABLE company DROP COLUMN industry;
+ALTER TABLE company DROP COLUMN hq;
+ALTER TABLE company DROP COLUMN company_type;
+ALTER TABLE company DROP COLUMN specialities;
+ALTER TABLE company DROP COLUMN locations;
+ALTER TABLE company DROP COLUMN similar_companies;
+ALTER TABLE company DROP COLUMN affiliated_companies;
+ALTER TABLE company DROP COLUMN updates;
 
 ALTER TABLE affiliated_companies DROP COLUMN location;
 ALTER TABLE similar_companies DROP COLUMN location;
