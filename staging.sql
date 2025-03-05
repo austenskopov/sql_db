@@ -1,10 +1,29 @@
--- =============================================================
--- SQL SCRIPT: Company Data Migration & Transformation
--- =============================================================
+/*******************************************************************************
+ * SQL SCRIPT: Company Data Migration & Transformation
+ *
+ * PURPOSE:
+ * This script transforms raw company data from LinkedIn into a structured,
+ * normalized data model with dimension tables for better data integrity
+ * and analytics capabilities.
+ *
+ * PROCESS OVERVIEW:
+ * 1. Create initial schema and data structures
+ * 2. Add necessary columns and constraints
+ * 3. Create dimension and junction tables for normalized data model
+ * 4. Transform and load data into the normalized structure
+ * 5. Remove redundant columns after transformation
+ *
+ * LAST UPDATED: 2025-03-05
+ *******************************************************************************/
 
--- =============================================================
--- 1) Create the "company_raw" table (BEFORE Pentaho migration)
--- =============================================================
+/*******************************************************************************
+ * PHASE 1: INITIAL SCHEMA CREATION
+ *******************************************************************************/
+
+-- -----------------------------------------------------
+-- Create the initial staging table for raw company data
+-- This table will hold LinkedIn data before transformation
+-- -----------------------------------------------------
 CREATE TABLE company_raw (
     linkedin_internal_id VARCHAR(255),
     description TEXT,
@@ -35,33 +54,31 @@ CREATE TABLE company_raw (
     customer_list TEXT
 );
 
--- =============================================================
--- 2) Rename "company_raw" to "company"
--- =============================================================
+-- -----------------------------------------------------
+-- Rename staging table to final table name
+-- -----------------------------------------------------
 ALTER TABLE company_raw RENAME TO company;
 
--- =============================================================
--- 3) Add columns for min/max of company_size
--- =============================================================
+-- -----------------------------------------------------
+-- Add primary key and additional columns for data normalization
+-- -----------------------------------------------------
+ALTER TABLE company
+  ADD COLUMN company_id INT AUTO_INCREMENT PRIMARY KEY FIRST;
+
+-- Add columns to store min/max company size values parsed from JSON
 ALTER TABLE company
 ADD COLUMN company_size_min VARCHAR(50) AFTER company_size,
 ADD COLUMN company_size_max VARCHAR(50) AFTER company_size_min;
 
--- =============================================================
--- 4) Add an auto-increment primary key to "company"
--- =============================================================
-ALTER TABLE company
-  ADD COLUMN company_id INT AUTO_INCREMENT PRIMARY KEY FIRST;
+/*******************************************************************************
+ * PHASE 2: CREATE DIMENSION AND JUNCTION TABLES
+ * These tables will store normalized data extracted from the main company table
+ *******************************************************************************/
 
--- =============================================================
--- (Optional placeholder) Make "company_size" into min_size / max_size
---    Currently no direct SQL here – 
---    The following lines do partially address it in the insert section
--- =============================================================
-
--- =============================================================
--- 5) Create "specialty" dimension and "company_specialty" junction
--- =============================================================
+-- -----------------------------------------------------
+-- Create specialty dimension and junction table
+-- Stores company specialties in a normalized form
+-- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS specialty (
     specialty_name_id INT AUTO_INCREMENT PRIMARY KEY,
     specialty_name VARCHAR(255) NOT NULL
@@ -76,9 +93,10 @@ CREATE TABLE IF NOT EXISTS company_specialty (
     UNIQUE (company_id, specialty_name_id)
 ) ENGINE=INNODB;
 
--- =============================================================
--- 6) Create "type" dimension and "company_type" junction
--- =============================================================
+-- -----------------------------------------------------
+-- Create company type dimension and junction table
+-- Normalizes company type information
+-- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS type (
     company_type_id INT AUTO_INCREMENT PRIMARY KEY,
     company_type_name VARCHAR(255) NOT NULL
@@ -93,9 +111,10 @@ CREATE TABLE IF NOT EXISTS company_type (
     UNIQUE (company_id, company_type_id)
 ) ENGINE=INNODB;
 
--- =============================================================
--- 7) Create "industry" dimension and "industry_type" junction
--- =============================================================
+-- -----------------------------------------------------
+-- Create industry dimension and junction table
+-- Normalizes industry information
+-- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS industry (
     industry_id INT AUTO_INCREMENT PRIMARY KEY,
     industry_name VARCHAR(255) NOT NULL
@@ -110,31 +129,26 @@ CREATE TABLE IF NOT EXISTS industry_type (
     UNIQUE (company_id, industry_id)
 ) ENGINE=INNODB;
 
--- =============================================================
--- 8) Create "locations" dimension and "company_location" junction
--- =============================================================
+-- -----------------------------------------------------
+-- Create locations table with one-to-many relationship to companies
+-- Stores detailed location information for each company
+-- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS locations (
     locations_id INT AUTO_INCREMENT PRIMARY KEY,
+    company_id INT NOT NULL,
     country VARCHAR(255),
     city VARCHAR(255),
     postal_code VARCHAR(50),
     address_line1 VARCHAR(500),
     is_hq BOOLEAN DEFAULT FALSE,
-    state VARCHAR(255)
+    state VARCHAR(255),
+    FOREIGN KEY (company_id) REFERENCES company(company_id)
 ) ENGINE=INNODB;
 
-CREATE TABLE IF NOT EXISTS company_location (
-    unique_id INT AUTO_INCREMENT PRIMARY KEY,
-    company_id INT NOT NULL,
-    locations_id INT NOT NULL,
-    FOREIGN KEY (company_id) REFERENCES company(company_id),
-    FOREIGN KEY (locations_id) REFERENCES locations(locations_id),
-    UNIQUE (company_id, locations_id)
-) ENGINE=INNODB;
-
--- =============================================================
--- 9) Create tables for updates and related companies
--- =============================================================
+-- -----------------------------------------------------
+-- Create tables for company updates and related companies
+-- Stores social media updates and company relationships
+-- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS company_updates (
     update_id INT AUTO_INCREMENT PRIMARY KEY,
     company_id INT NOT NULL,
@@ -175,17 +189,24 @@ CREATE TABLE IF NOT EXISTS similar_companies_junction (
     UNIQUE (company_id, similar_companies_id)
 ) ENGINE=INNODB;
 
--- =============================================================
--- 10) Insert Data into Newly Created Tables
--- =============================================================
+/*******************************************************************************
+ * PHASE 3: DATA TRANSFORMATION AND LOADING
+ * Extract data from JSON fields and load into normalized tables
+ *******************************************************************************/
 
+-- -----------------------------------------------------
+-- Parse company size min/max values from JSON
+-- -----------------------------------------------------
 INSERT INTO company (company_size_min, company_size_max)
 SELECT 
     JSON_EXTRACT(company_size, '$[0]') AS min_value,
     JSON_EXTRACT(company_size, '$[1]') AS max_value
 FROM company;
 
--- 10.1) Specialties
+-- -----------------------------------------------------
+-- Extract and load specialty data
+-- -----------------------------------------------------
+-- Step 1: Insert unique specialties into dimension table
 INSERT INTO specialty (specialty_name)
 SELECT DISTINCT TRIM(jt.specialty)
 FROM company cr
@@ -200,6 +221,7 @@ WHERE cr.specialities IS NOT NULL
   AND TRIM(jt.specialty) <> ''
 ON DUPLICATE KEY UPDATE specialty_name = specialty_name;
 
+-- Step 2: Create relationships between companies and specialties
 INSERT INTO company_specialty (company_id, specialty_name_id)
 SELECT cr.company_id, s.specialty_name_id
 FROM company cr
@@ -215,7 +237,10 @@ WHERE cr.specialities IS NOT NULL
   AND TRIM(jt.specialty) <> ''
 ON DUPLICATE KEY UPDATE specialty_name_id = s.specialty_name_id;
 
--- 10.2) Company Type
+-- -----------------------------------------------------
+-- Extract and load company type data
+-- -----------------------------------------------------
+-- Step 1: Insert unique company types into dimension table
 INSERT INTO type (company_type_name)
 SELECT DISTINCT TRIM(company_type) AS company_type_name
 FROM company
@@ -223,6 +248,7 @@ WHERE company_type IS NOT NULL
   AND TRIM(company_type) <> ''
 ON DUPLICATE KEY UPDATE company_type_name = company_type_name;
 
+-- Step 2: Create relationships between companies and types
 INSERT INTO company_type (company_id, company_type_id)
 SELECT cr.company_id, t.company_type_id
 FROM company cr
@@ -231,7 +257,10 @@ WHERE cr.company_type IS NOT NULL
   AND TRIM(cr.company_type) <> ''
 ON DUPLICATE KEY UPDATE company_type_id = t.company_type_id;
 
--- 10.3) Industry
+-- -----------------------------------------------------
+-- Extract and load industry data
+-- -----------------------------------------------------
+-- Step 1: Insert unique industries into dimension table
 INSERT INTO industry (industry_name)
 SELECT DISTINCT TRIM(industry) AS industry_name
 FROM company
@@ -239,6 +268,7 @@ WHERE industry IS NOT NULL
   AND TRIM(industry) <> ''
 ON DUPLICATE KEY UPDATE industry_name = industry_name;
 
+-- Step 2: Create relationships between companies and industries
 INSERT INTO industry_type (company_id, industry_id)
 SELECT cr.company_id, i.industry_id
 FROM company cr
@@ -247,9 +277,12 @@ WHERE cr.industry IS NOT NULL
   AND TRIM(cr.industry) <> ''
 ON DUPLICATE KEY UPDATE industry_id = i.industry_id;
 
--- 10.4) Locations
-INSERT INTO locations (country, city, postal_code, address_line1, is_hq, state)
-SELECT DISTINCT
+-- -----------------------------------------------------
+-- Extract and load location data
+-- -----------------------------------------------------
+INSERT INTO locations (company_id, country, city, postal_code, address_line1, is_hq, state)
+SELECT 
+    cr.company_id,
     TRIM(jt.country) AS country,
     TRIM(jt.city) AS city,
     TRIM(jt.postal_code) AS postal_code,
@@ -275,37 +308,9 @@ JOIN JSON_TABLE(
 WHERE cr.locations IS NOT NULL
   AND TRIM(jt.country) <> '';
 
-INSERT INTO company_location (company_id, locations_id)
-SELECT DISTINCT
-    cr.company_id, 
-    l.locations_id
-FROM company cr
-JOIN JSON_TABLE(
-    cr.locations,
-    '$[*]'
-    COLUMNS (
-       country     VARCHAR(255) PATH '$.country',
-       city        VARCHAR(255) PATH '$.city',
-       postal_code VARCHAR(50)  PATH '$.postal_code',
-       line_1      VARCHAR(500) PATH '$.line_1',
-       is_hq       VARCHAR(10)  PATH '$.is_hq',
-       state       VARCHAR(255) PATH '$.state'
-    )
-) AS jt
-JOIN locations l 
-    ON l.country       = TRIM(jt.country)
-   AND l.city          = TRIM(jt.city)
-   AND l.postal_code   = TRIM(jt.postal_code)
-   AND l.address_line1 = TRIM(jt.line_1)
-   AND l.state         = TRIM(jt.state)
-   AND l.is_hq         = CASE 
-                           WHEN TRIM(jt.is_hq) IN ('true', '1') THEN TRUE 
-                           ELSE FALSE 
-                         END
-WHERE cr.locations IS NOT NULL
-  AND TRIM(jt.country) <> '';
-
--- 10.5) Company Updates
+-- -----------------------------------------------------
+-- Extract and load company update data
+-- -----------------------------------------------------
 INSERT INTO company_updates (company_id, article_link, image, posted_on, update_text, total_likes)
 SELECT 
     cr.company_id,
@@ -336,7 +341,9 @@ JOIN JSON_TABLE(
 ) AS jt
 WHERE cr.updates IS NOT NULL;
 
--- 10.6) Affiliated Companies
+-- -----------------------------------------------------
+-- Extract and load affiliated companies data
+-- -----------------------------------------------------
 INSERT INTO affiliated_companies (company_id, name, linkedin_url, industry, location)
 SELECT 
     cr.company_id,
@@ -357,7 +364,10 @@ JOIN JSON_TABLE(
 ) AS jt
 WHERE cr.affiliated_companies IS NOT NULL;
 
--- 10.7) Similar Companies
+-- -----------------------------------------------------
+-- Extract and load similar companies data
+-- -----------------------------------------------------
+-- Step 1: Insert unique similar companies into dimension table
 INSERT INTO similar_companies (name, linkedin_url, industry, location)
 SELECT DISTINCT
     COALESCE(TRIM(jt.name), 'No Name Provided') AS name,
@@ -378,6 +388,7 @@ JOIN JSON_TABLE(
 WHERE cr.similar_companies IS NOT NULL
   AND TRIM(jt.name) <> '';
 
+-- Step 2: Create relationships between companies and similar companies
 INSERT INTO similar_companies_junction (company_id, similar_companies_id)
 SELECT DISTINCT
     cr.company_id,
@@ -401,9 +412,14 @@ JOIN similar_companies sc
 WHERE cr.similar_companies IS NOT NULL
   AND TRIM(jt.name) <> '';
 
--- =============================================================
--- 11) Clean Up: Drop Columns We No Longer Need
--- =============================================================
+/*******************************************************************************
+ * PHASE 4: CLEANUP
+ * Remove redundant columns from the main company table after extraction
+ *******************************************************************************/
+
+-- -----------------------------------------------------
+-- Drop columns that have been normalized into separate tables
+-- -----------------------------------------------------
 ALTER TABLE company DROP COLUMN industry;
 ALTER TABLE company DROP COLUMN hq;
 ALTER TABLE company DROP COLUMN company_type;
@@ -413,16 +429,17 @@ ALTER TABLE company DROP COLUMN similar_companies;
 ALTER TABLE company DROP COLUMN affiliated_companies;
 ALTER TABLE company DROP COLUMN updates;
 ALTER TABLE company DROP COLUMN company_size;
-ALTER TABLE company DROP COLUMN exit_data,
-ALTER TABLE company DROP COLUMN acquisitions,
-ALTER TABLE company DROP COLUMN extra,
-ALTER TABLE company DROP COLUMN funding_data,
-ALTER TABLE company DROP COLUMN categories,
+ALTER TABLE company DROP COLUMN exit_data;
+ALTER TABLE company DROP COLUMN acquisitions;
+ALTER TABLE company DROP COLUMN extra;
+ALTER TABLE company DROP COLUMN funding_data;
+ALTER TABLE company DROP COLUMN categories;
 ALTER TABLE company DROP COLUMN customer_list;
 
+-- Remove redundant location fields from related companies tables
 ALTER TABLE affiliated_companies DROP COLUMN location;
 ALTER TABLE similar_companies DROP COLUMN location;
 
--- =============================================================
--- END OF SCRIPT
--- =============================================================
+/*******************************************************************************
+ * END OF SCRIPT
+ *******************************************************************************/
