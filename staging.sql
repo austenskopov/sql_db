@@ -3,9 +3,9 @@
 -- =============================================================
 
 -- =============================================================
--- 1) Create the "company" table (BEFORE Pentaho migration)
+-- 1) Create the "company_raw" table (BEFORE Pentaho migration)
 -- =============================================================
-CREATE TABLE company (
+CREATE TABLE company_raw (
     linkedin_internal_id VARCHAR(255),
     description TEXT,
     website VARCHAR(255),
@@ -36,24 +36,31 @@ CREATE TABLE company (
 );
 
 -- =============================================================
--- 2) Drop unneeded columns from "company"
+-- 2) Rename "company_raw" to "company"
 -- =============================================================
-ALTER TABLE company
-  DROP COLUMN exit_data,
-  DROP COLUMN acquisitions,
-  DROP COLUMN extra,
-  DROP COLUMN funding_data,
-  DROP COLUMN categories,
-  DROP COLUMN customer_list;
+ALTER TABLE company_raw RENAME TO company;
 
 -- =============================================================
--- 3) Add an auto-increment primary key to "company"
+-- 3) Add columns for min/max of company_size
+-- =============================================================
+ALTER TABLE company
+ADD COLUMN company_size_min VARCHAR(50) AFTER company_size,
+ADD COLUMN company_size_max VARCHAR(50) AFTER company_size_min;
+
+-- =============================================================
+-- 4) Add an auto-increment primary key to "company"
 -- =============================================================
 ALTER TABLE company
   ADD COLUMN company_id INT AUTO_INCREMENT PRIMARY KEY FIRST;
 
 -- =============================================================
--- 4) Create "specialty" dimension and "company_specialty" junction
+-- (Optional placeholder) Make "company_size" into min_size / max_size
+--    Currently no direct SQL here – 
+--    The following lines do partially address it in the insert section
+-- =============================================================
+
+-- =============================================================
+-- 5) Create "specialty" dimension and "company_specialty" junction
 -- =============================================================
 CREATE TABLE IF NOT EXISTS specialty (
     specialty_name_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -70,7 +77,7 @@ CREATE TABLE IF NOT EXISTS company_specialty (
 ) ENGINE=INNODB;
 
 -- =============================================================
--- 5) Create "type" dimension and "company_type" junction
+-- 6) Create "type" dimension and "company_type" junction
 -- =============================================================
 CREATE TABLE IF NOT EXISTS type (
     company_type_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -87,7 +94,7 @@ CREATE TABLE IF NOT EXISTS company_type (
 ) ENGINE=INNODB;
 
 -- =============================================================
--- 6) Create "industry" dimension and "industry_type" junction
+-- 7) Create "industry" dimension and "industry_type" junction
 -- =============================================================
 CREATE TABLE IF NOT EXISTS industry (
     industry_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -101,23 +108,6 @@ CREATE TABLE IF NOT EXISTS industry_type (
     FOREIGN KEY (company_id) REFERENCES company(company_id),
     FOREIGN KEY (industry_id) REFERENCES industry(industry_id),
     UNIQUE (company_id, industry_id)
-) ENGINE=INNODB;
-
--- =============================================================
--- 7) Create "ranges" dimension and "company_range" junction
--- =============================================================
-CREATE TABLE IF NOT EXISTS ranges (
-    range_id INT AUTO_INCREMENT PRIMARY KEY,
-    range_parameter VARCHAR(255) NOT NULL
-) ENGINE=INNODB;
-
-CREATE TABLE IF NOT EXISTS company_range (
-    unique_id INT AUTO_INCREMENT PRIMARY KEY,
-    range_id INT NOT NULL,
-    company_id INT NOT NULL,
-    FOREIGN KEY (company_id) REFERENCES company(company_id),
-    FOREIGN KEY (range_id) REFERENCES ranges(range_id),
-    UNIQUE (company_id, range_id)
 ) ENGINE=INNODB;
 
 -- =============================================================
@@ -189,6 +179,12 @@ CREATE TABLE IF NOT EXISTS similar_companies_junction (
 -- 10) Insert Data into Newly Created Tables
 -- =============================================================
 
+INSERT INTO company (company_size_min, company_size_max)
+SELECT 
+    JSON_EXTRACT(company_size, '$[0]') AS min_value,
+    JSON_EXTRACT(company_size, '$[1]') AS max_value
+FROM company;
+
 -- 10.1) Specialties
 INSERT INTO specialty (specialty_name)
 SELECT DISTINCT TRIM(jt.specialty)
@@ -251,85 +247,7 @@ WHERE cr.industry IS NOT NULL
   AND TRIM(cr.industry) <> ''
 ON DUPLICATE KEY UPDATE industry_id = i.industry_id;
 
--- 10.4) Ranges (Company Size)
-INSERT INTO ranges (range_parameter)
-SELECT DISTINCT
-   CASE 
-      WHEN jt.low = 0    AND jt.high = 1     THEN '0-1'
-      WHEN jt.low = 2    AND jt.high = 10    THEN '2-10'
-      WHEN jt.low = 11   AND jt.high = 50    THEN '11-50'
-      WHEN jt.low = 51   AND jt.high = 200   THEN '51-200'
-      WHEN jt.low = 201  AND jt.high = 500   THEN '201-500'
-      WHEN jt.low = 501  AND jt.high = 1000  THEN '501-1000'
-      WHEN jt.low = 1001 AND jt.high = 5000  THEN '1001-5000'
-      WHEN jt.low = 5001 AND jt.high = 10000 THEN '5001-10000'
-      WHEN jt.low = 10001 AND jt.high IS NULL THEN '10001+'
-      ELSE NULL
-   END AS range_parameter
-FROM company cr
-JOIN JSON_TABLE(
-    cr.company_size,
-    '$'
-    COLUMNS (
-       low  INT PATH '$[0]',
-       high INT PATH '$[1]'
-    )
-) AS jt
-WHERE cr.company_size IS NOT NULL
-  AND jt.low IS NOT NULL
-  AND (
-       (jt.low = 0    AND jt.high = 1) OR
-       (jt.low = 2    AND jt.high = 10) OR
-       (jt.low = 11   AND jt.high = 50) OR
-       (jt.low = 51   AND jt.high = 200) OR
-       (jt.low = 201  AND jt.high = 500) OR
-       (jt.low = 501  AND jt.high = 1000) OR
-       (jt.low = 1001 AND jt.high = 5000) OR
-       (jt.low = 5001 AND jt.high = 10000) OR
-       (jt.low = 10001 AND jt.high IS NULL)
-  );
-
-INSERT INTO company_range (company_id, range_id)
-SELECT DISTINCT
-    cr.company_id,
-    r.range_id
-FROM company cr
-JOIN JSON_TABLE(
-    cr.company_size,
-    '$'
-    COLUMNS (
-       low  INT PATH '$[0]',
-       high INT PATH '$[1]'
-    )
-) AS jt
-JOIN ranges r 
-   ON r.range_parameter = CASE 
-         WHEN jt.low = 0    AND jt.high = 1     THEN '0-1'
-         WHEN jt.low = 2    AND jt.high = 10    THEN '2-10'
-         WHEN jt.low = 11   AND jt.high = 50    THEN '11-50'
-         WHEN jt.low = 51   AND jt.high = 200   THEN '51-200'
-         WHEN jt.low = 201  AND jt.high = 500   THEN '201-500'
-         WHEN jt.low = 501  AND jt.high = 1000  THEN '501-1000'
-         WHEN jt.low = 1001 AND jt.high = 5000  THEN '1001-5000'
-         WHEN jt.low = 5001 AND jt.high = 10000 THEN '5001-10000'
-         WHEN jt.low = 10001 AND jt.high IS NULL THEN '10001+'
-         ELSE NULL
-      END
-WHERE cr.company_size IS NOT NULL
-  AND jt.low IS NOT NULL
-  AND (
-       (jt.low = 0    AND jt.high = 1) OR
-       (jt.low = 2    AND jt.high = 10) OR
-       (jt.low = 11   AND jt.high = 50) OR
-       (jt.low = 51   AND jt.high = 200) OR
-       (jt.low = 201  AND jt.high = 500) OR
-       (jt.low = 501  AND jt.high = 1000) OR
-       (jt.low = 1001 AND jt.high = 5000) OR
-       (jt.low = 5001 AND jt.high = 10000) OR
-       (jt.low = 10001 AND jt.high IS NULL)
-  );
-
--- 10.5) Locations
+-- 10.4) Locations
 INSERT INTO locations (country, city, postal_code, address_line1, is_hq, state)
 SELECT DISTINCT
     TRIM(jt.country) AS country,
@@ -387,7 +305,7 @@ JOIN locations l
 WHERE cr.locations IS NOT NULL
   AND TRIM(jt.country) <> '';
 
--- 10.6) Company Updates
+-- 10.5) Company Updates
 INSERT INTO company_updates (company_id, article_link, image, posted_on, update_text, total_likes)
 SELECT 
     cr.company_id,
@@ -418,7 +336,7 @@ JOIN JSON_TABLE(
 ) AS jt
 WHERE cr.updates IS NOT NULL;
 
--- 10.7) Affiliated Companies
+-- 10.6) Affiliated Companies
 INSERT INTO affiliated_companies (company_id, name, linkedin_url, industry, location)
 SELECT 
     cr.company_id,
@@ -439,7 +357,7 @@ JOIN JSON_TABLE(
 ) AS jt
 WHERE cr.affiliated_companies IS NOT NULL;
 
--- 10.8) Similar Companies
+-- 10.7) Similar Companies
 INSERT INTO similar_companies (name, linkedin_url, industry, location)
 SELECT DISTINCT
     COALESCE(TRIM(jt.name), 'No Name Provided') AS name,
@@ -494,6 +412,13 @@ ALTER TABLE company DROP COLUMN locations;
 ALTER TABLE company DROP COLUMN similar_companies;
 ALTER TABLE company DROP COLUMN affiliated_companies;
 ALTER TABLE company DROP COLUMN updates;
+ALTER TABLE company DROP COLUMN company_size;
+ALTER TABLE company DROP COLUMN exit_data,
+ALTER TABLE company DROP COLUMN acquisitions,
+ALTER TABLE company DROP COLUMN extra,
+ALTER TABLE company DROP COLUMN funding_data,
+ALTER TABLE company DROP COLUMN categories,
+ALTER TABLE company DROP COLUMN customer_list;
 
 ALTER TABLE affiliated_companies DROP COLUMN location;
 ALTER TABLE similar_companies DROP COLUMN location;
