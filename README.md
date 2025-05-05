@@ -1,5 +1,7 @@
 # LinkedIn Company Data ETL System
 
+This repo was created by David Oh, who was so kind as to upload this group project! 10/10 group project team member.
+
 ![Database](https://img.shields.io/badge/Database-MySQL-blue)
 ![ETL](https://img.shields.io/badge/ETL-Pentaho-orange)
 ![Python](https://img.shields.io/badge/Language-Python-green)
