@@ -1,6 +1,6 @@
 # LinkedIn Company Data ETL System
 
-This repo was created by David Oh, who was so kind as to upload our group project for me to fork! 
+This repo was created by David Oh, who was so kind as to upload our class group project for me to fork! 
 
 ![Database](https://img.shields.io/badge/Database-MySQL-blue)
 ![ETL](https://img.shields.io/badge/ETL-Pentaho-orange)
